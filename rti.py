@@ -76,7 +76,7 @@ def range_profiles(wav, FS, N):
     return tim, sif
 
 def plots(wavpath):
-    FS, data = wavfile.read('running_outside_20ms.wav')
+    FS, data = wavfile.read(wavpath)
     N = int(Tp * FS) # number of samples per pulse
     tim, sif = range_profiles(data, FS, N)
     # subtract the average
