@@ -12,6 +12,7 @@ and Synthetic Aperture Radar Imaging
 Gregory L. Charvat
 """
 import argparse
+import sys
 import numpy as np
 import scipy.io.wavfile as wavfile
 import matplotlib.pyplot as plt
@@ -51,6 +52,9 @@ def range_profiles(wav, FS, N):
     """
     #the input appears to be inverted
     trig = -1 * wav[:, 0]
+    # Plot the first second of trigger
+    plt.plot(trig[0:FS], 'b-')
+    plt.show()
     s = -1 * wav[:, 1]
     thresh = 0
     start = (trig > thresh)
@@ -77,6 +81,20 @@ def range_profiles(wav, FS, N):
 
 def plots(wavpath):
     FS, data = wavfile.read(wavpath)
+    nsamples = data.shape[0]
+    nchannels = data.shape[1]
+    print('Reading .wav file \'%s\'' % wavpath)
+    print('Sample type: %s' % str(data.dtype))
+    print('Sample rate: %d Hz' % FS)
+    print('Number of channels: %d' % nchannels)
+    print('Number of samples: %d' % nsamples)
+    print('Duration (s): %f' % (nsamples / float(FS)))
+    print('Channel 0 range: [%d, %d]' % (min(data[:, 0]), max(data[:, 0])))
+    print('Channel 1 range: [%d, %d]' % (min(data[:, 1]), max(data[:, 1])))
+    if data.shape[1] != 2:
+        print('ERROR: .wav file must be stereo (2 channels)')
+        return 1
+    #return 0
     N = int(Tp * FS) # number of samples per pulse
     tim, sif = range_profiles(data, FS, N)
     # subtract the average
@@ -118,5 +136,5 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    plots(args.wavfile)
+    sys.exit(plots(args.wavfile))
 
