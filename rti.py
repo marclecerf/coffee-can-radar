@@ -53,8 +53,9 @@ def range_profiles(wav, FS, N):
     #the input appears to be inverted
     trig = -1 * wav[:, 0]
     # Plot the first second of trigger
-    plt.plot(trig[0:FS], 'b-')
+    plt.plot(trig, 'b-')
     plt.show()
+    sys.exit(0)
     s = -1 * wav[:, 1]
     thresh = 0
     start = (trig > thresh)
@@ -79,16 +80,33 @@ def range_profiles(wav, FS, N):
     tim = np.array(tim)
     return tim, sif
 
-def plots(wavpath):
+def plots(wavpath, t0=None, tf=None):
     FS, data = wavfile.read(wavpath)
     nsamples = data.shape[0]
     nchannels = data.shape[1]
+    duration = nsamples / float(FS)
     print('Reading .wav file \'%s\'' % wavpath)
     print('Sample type: %s' % str(data.dtype))
     print('Sample rate: %d Hz' % FS)
     print('Number of channels: %d' % nchannels)
-    print('Number of samples: %d' % nsamples)
-    print('Duration (s): %f' % (nsamples / float(FS)))
+    print('Total duration (s): %f' % (nsamples / float(FS)))
+    print('Total number of samples: %d' % nsamples)
+    if t0 is None:
+        t0 = 0.
+        s0 = 0
+    else:
+        s0 = int(t0 * FS)
+    if tf is None:
+        tf = duration
+        sf = nsamples - 1
+    else:
+        sf = int(tf * FS)
+    nsamples = sf - s0
+    duration = nsamples / float(FS)
+    data = data[s0:sf, :]
+    print('Analysis start (s): %f' % t0)
+    print('Analysis stop (s): %f' % tf)
+    print('Analysis number of samples: %d' % nsamples)
     print('Channel 0 range: [%d, %d]' % (min(data[:, 0]), max(data[:, 0])))
     print('Channel 1 range: [%d, %d]' % (min(data[:, 1]), max(data[:, 1])))
     if data.shape[1] != 2:
@@ -132,9 +150,11 @@ def plots(wavpath):
 def parse_args():
     ap = argparse.ArgumentParser('RTI Plotter')
     ap.add_argument('wavfile', help='RADAR .wav file')
+    ap.add_argument('--t0', type=float, default=None, help='Start time (s)')
+    ap.add_argument('--tf', type=float, default=None, help='Stop time (s)')
     return ap.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(plots(args.wavfile))
+    sys.exit(plots(args.wavfile, t0=args.t0, tf=args.tf))
 
