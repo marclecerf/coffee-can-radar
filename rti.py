@@ -14,6 +14,7 @@ Gregory L. Charvat
 import argparse
 import sys
 import numpy as np
+import time
 import scipy.io.wavfile as wavfile
 import matplotlib.pyplot as plt
 
@@ -24,11 +25,22 @@ import matplotlib.pyplot as plt
 c = 3.0E8 #(m/s) speed of light
 
 # RADAR PARAMETERS
+# Modulation ramp signal sent to oscillator
+# (measure this with oscilloscope)
+V_ramp_min = 1.2 # (V)
+V_ramp_max = 3.7 # (V)
 Tp = 20.0E-3 # (s) pulse time
-fstart = 2260.0E6 # (Hz) LFM start frequency for example
-fstop = 2590.0E6 # (Hz) LFM stop frequency for example
-#fstart = 2402E6 # (Hz) LFM start frequency for ISM band
-#fstop = 2495E6 # (Hz) LFM stop frequency for ISM band
+def osc_hz_out(v_in):
+    # Oscillator min/max input voltage and
+    # min/max output frequency (read these
+    # off of oscillator data sheet)
+    V_osc_min = 0.5 # (V)
+    V_osc_max = 5.0 # (V)
+    f_osc_min = 2315.0e6 # (Hz)
+    f_osc_max = 2536.0e6 # (Hz)
+    return np.interp(v_in, [V_osc_min, V_osc_max], [f_osc_min, f_osc_max])
+fstart = osc_hz_out(V_ramp_min)  # (Hz) LFM start
+fstop = osc_hz_out(V_ramp_max)  # (Hz) LFM stop
 BW = fstop - fstart # (Hz) transmit bandwidth
 rr = c/(2 * BW) # range resolution
 
@@ -53,9 +65,9 @@ def range_profiles(wav, FS, N):
     #the input appears to be inverted
     trig = -1 * wav[:, 0]
     # Plot the first second of trigger
-    plt.plot(trig, 'b-')
-    plt.show()
-    sys.exit(0)
+    #plt.plot(trig, 'b-')
+    #plt.show()
+    #sys.exit(0)
     s = -1 * wav[:, 1]
     thresh = 0
     start = (trig > thresh)
@@ -79,6 +91,38 @@ def range_profiles(wav, FS, N):
     sif = np.array(sif)
     tim = np.array(tim)
     return tim, sif
+
+def threshold_cfar(x, num_train=10, num_guard=2, rate_fa=1.0e-7):
+    """Detect peaks with CFAR algorithm.
+
+    num_train: Number of training cells.
+    num_guard: Number of guard cells.
+    rate_fa: False alarm rate.
+    """
+    num_cells = x.size
+    num_train_half = int(round(num_train / 2))
+    num_guard_half = int(round(num_guard / 2))
+    num_side = int(num_train_half + num_guard_half)
+
+    alpha = num_train*(rate_fa**(-1/num_train) - 1) # threshold factor
+
+    peak_idx = []
+    for ii in range(num_side, num_cells - num_side):
+
+        if ii != ii-num_side+np.argmax(x[ii-num_side:ii+num_side+1]):
+            continue
+
+        sum1 = np.sum(x[ii-num_side:ii+num_side+1])
+        sum2 = np.sum(x[ii-num_guard_half:ii+num_guard_half+1])
+        p_noise = (sum1 - sum2) / num_train
+        threshold = alpha * p_noise
+
+        if x[ii] > threshold:
+            peak_idx.append(ii)
+
+    peak_idx = np.array(peak_idx, dtype=int)
+
+    return peak_idx
 
 def plots(wavpath, t0=None, tf=None):
     FS, data = wavfile.read(wavpath)
@@ -124,27 +168,40 @@ def plots(wavpath, t0=None, tf=None):
         delta = f[1] - f[0]
         return [f[0] - delta/2, f[-1] + delta/2]
     # RTI plot
-    v = dbv(np.fft.ifft(sif, n=zpad, axis=1))
-    S = v[:,0:int(v.shape[1]/2)]
-    m = np.max(np.max(v))
-    plt.figure()
-    plt.imshow(S-m, aspect='auto', interpolation='nearest',
-               extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
-    plt.title('RTI without clutter rejection')
-    plt.xlabel('Range (meters)')
-    plt.ylabel('Time (seconds)')
+    print(sif.shape)
+    t0_ = time.time()
+    v = dbv(np.fft.ifft(sif, axis=1))
+    tf_ = time.time()
+    print("ifft [%d x %d] took %f s" % (sif.shape[0], sif.shape[1], tf_ - t0_))
+    #S = v[:,0:int(v.shape[1]/2)]
+    #m = np.max(np.max(v))
+    #plt.figure()
+    #plt.imshow(S, aspect='auto', interpolation='nearest',
+    #           extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
+    #plt.title('RTI without clutter rejection')
+    #plt.xlabel('Range (meters)')
+    #plt.ylabel('Time (seconds)')
     # 2-pulse canceller RTI plot
     sif2 = sif[1:sif.shape[0], :] - sif[0:sif.shape[0]-1, :]
-    v2 = dbv(np.fft.ifft(sif2, n=zpad, axis=1))
+    v2 = dbv(np.fft.ifft(sif2, axis=1))
     # TODO: ref MATLAB script, scale S2 by range
     S2 = v2[:,0:int(v2.shape[1]/2)]
-    m2 = np.max(np.max(v2))
-    plt.figure()
-    plt.imshow(S2-m2, aspect='auto', interpolation='nearest',
+    #m2 = np.max(np.max(v2))
+    # CFAR
+    D2 = np.zeros(S2.shape)
+    for irow, row in enumerate(S2):
+        detect_idxs = threshold_cfar(row)
+        D2[irow, detect_idxs] = 1.
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig.suptitle('RTI with 2-pulse canceller clutter rejection')
+    ax1.imshow(S2, aspect='auto', interpolation='nearest',
                extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
-    plt.title('RTI with 2-pulse canceller clutter rejection')
-    plt.xlabel('Range (meters)')
-    plt.ylabel('Time (seconds)')
+    ax1.set_xlabel('Range (meters)')
+    ax1.set_ylabel('Time (seconds)')
+    ax2.imshow(D2, aspect='auto', interpolation='nearest',
+               extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
+    ax2.set_xlabel('Range (meters)')
+    ax2.set_ylabel('Time (seconds)')
     plt.show()
 
 def parse_args():
