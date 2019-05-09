@@ -92,37 +92,22 @@ def range_profiles(wav, FS, N):
     tim = np.array(tim)
     return tim, sif
 
-def threshold_cfar(x, num_train=10, num_guard=2, rate_fa=1.0e-7):
+def threshold_cfar(x, num_train=3, num_guard=1, rate_fa=1.0e-7):
     """Detect peaks with CFAR algorithm.
 
     num_train: Number of training cells.
     num_guard: Number of guard cells.
     rate_fa: False alarm rate.
     """
-    num_cells = x.size
-    num_train_half = int(round(num_train / 2))
-    num_guard_half = int(round(num_guard / 2))
-    num_side = int(num_train_half + num_guard_half)
-
-    alpha = num_train*(rate_fa**(-1/num_train) - 1) # threshold factor
-
-    peak_idx = []
-    for ii in range(num_side, num_cells - num_side):
-
-        if ii != ii-num_side+np.argmax(x[ii-num_side:ii+num_side+1]):
-            continue
-
-        sum1 = np.sum(x[ii-num_side:ii+num_side+1])
-        sum2 = np.sum(x[ii-num_guard_half:ii+num_guard_half+1])
-        p_noise = (sum1 - sum2) / num_train
-        threshold = alpha * p_noise
-
-        if x[ii] > threshold:
-            peak_idx.append(ii)
-
-    peak_idx = np.array(peak_idx, dtype=int)
-
-    return peak_idx
+    train_idxs_high = np.arange(num_guard + 1, num_train + num_guard + 1)
+    train_idxs_low = np.flip(train_idxs_high) * -1
+    train_idxs = np.hstack((train_idxs_low, train_idxs_high))
+    N = len(train_idxs)
+    M = np.array([np.roll(x, ii) for ii in train_idxs])
+    Pn = np.mean(M, axis=0)
+    alpha = N * (rate_fa**(-1./N) - 1.)
+    thresh = alpha * Pn
+    return [], thresh
 
 def plots(wavpath, t0=None, tf=None):
     FS, data = wavfile.read(wavpath)
