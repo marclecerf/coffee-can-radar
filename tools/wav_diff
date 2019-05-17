@@ -1,0 +1,9 @@
+#!/bin/bash
+FILE1=$1
+FILE2=$2
+TMP=.wav_diff_tmp.wav
+OUT=wave_diff.png
+sox -m -v 1 $FILE1 -v -1 $FILE2 $TMP
+sox $TMP -n spectrogram -o $OUT
+sox $FILE1 -n spectrogram -o $FILE1.png
+sox $FILE2 -n spectrogram -o $FILE2.png
