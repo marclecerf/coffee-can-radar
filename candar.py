@@ -1,4 +1,5 @@
 import argparse
+import logging
 import threading
 import time
 import sys
@@ -9,6 +10,8 @@ import pyaudio
 
 import interface
 import rti
+
+log = logging.getLogger(__name__)
 
 Tp = 20.0E-3 # (s) pulse time
 K = 20
@@ -55,11 +58,12 @@ class FpsEstimator(object):
         self.fps = (1. - self.alpha) * self.fps + self.alpha * new_fps
         self.tprev = tnow
         if tnow - self.tprint > self.dprint:
-            print('FPS: %4.1f kHz' % (self.fps / 1000.))
+            log.info('FPS: %4.1f kHz', self.fps / 1000.)
             self.tprint = tnow
 
 class RadarPlotter(object):
-    def __init__(self, iface, size=(600,350)):
+    def __init__(self, iface, output='', size=(600,350)):
+        log.info("Will write to file: %s", output)
         # Data stuff
         self.lock = threading.RLock()
         self.buf0 = np.array([])
@@ -159,25 +163,31 @@ class RadarPlotter(object):
 def parse_args():
     p = argparse.ArgumentParser()
     sp = p.add_subparsers()
-    sp_pb = sp.add_parser('playback')
-    sp_pb.add_argument('file', help='input playback .wav file')
-    sp_pb.set_defaults(iface=make_playback)
+    sps = {name: sp.add_parser(name) for name in
+           ['playback', 'pyaudio']}
+    sps['playback'].add_argument('input', help='input playback .wav file')
+    sps['playback'].set_defaults(iface=make_playback)
     IDX = 3
-    sp_dev = sp.add_parser('pyaudio')
-    sp_dev.add_argument('-d', '--dev',
-                        help='PyAudio device index (default: %d)' % IDX,
-                        default=IDX)
-    sp_dev.set_defaults(iface=make_device)
+    sps['pyaudio'].add_argument('-d', '--dev',
+                                help='PyAudio device index (default: %d)' % IDX,
+                                default=IDX)
+    sps['pyaudio'].set_defaults(iface=make_device)
+    for s in sps.values():
+        s.add_argument('-o', '--output', help='output .wav file', default='')
     return p.parse_args()
 
 def make_playback(args):
-    return lambda cb: interface.WaveFileReader(args.file, cb)
+    return lambda cb: interface.WaveFileReader(args.input, cb)
 
 def make_device(args):
     return lambda cb: interface.PyAudioReader(args.dev, cb)
 
 def main():
+    fmt='%(asctime)s %(message)s'
+    datefmt='%Y-%m-%d %H:%M:%S'
+    logging.basicConfig(level=logging.DEBUG,
+                        format=fmt, datefmt=datefmt)
     args = parse_args()
-    m = RadarPlotter(args.iface(args))
+    m = RadarPlotter(args.iface(args), output=args.output)
     return m.run()
 

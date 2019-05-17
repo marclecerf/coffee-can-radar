@@ -1,7 +1,10 @@
-import pyaudio
+import logging
 import threading
 import time
 import wave
+import pyaudio
+
+log = logging.getLogger(__name__)
 
 class WaveFileReader(object):
     def __init__(self, filename, callback, chunksize=1024):
@@ -11,7 +14,7 @@ class WaveFileReader(object):
         self.period = float(self.chunksize) / self.wf.getframerate()
         self.callback = callback
         self.bgt = []
-        print('Wav file \'%s\': %s' % (filename, self.wf.getparams()))
+        log.info('Opened \'%s\': %s', filename, str(self.wf.getparams()))
 
     def _playback_handler(self):
         while True:
