@@ -107,7 +107,7 @@ def threshold_cfar(x, num_train=3, num_guard=1, rate_fa=1.0e-7):
     Pn = np.mean(M, axis=0)
     alpha = N * (rate_fa**(-1./N) - 1.)
     thresh = alpha * Pn
-    return [], thresh
+    return thresh
 
 def plots(wavpath, t0=None, tf=None):
     FS, data = wavfile.read(wavpath)
@@ -175,8 +175,8 @@ def plots(wavpath, t0=None, tf=None):
     # CFAR
     D2 = np.zeros(S2.shape)
     for irow, row in enumerate(S2):
-        detect_idxs = threshold_cfar(row)
-        D2[irow, detect_idxs] = 1.
+        thresh = threshold_cfar(row)
+        D2[irow, :] = row > thresh
     fig, (ax1, ax2) = plt.subplots(1, 2)
     fig.suptitle('RTI with 2-pulse canceller clutter rejection')
     ax1.imshow(S2, aspect='auto', interpolation='nearest',

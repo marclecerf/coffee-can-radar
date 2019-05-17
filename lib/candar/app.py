@@ -64,6 +64,9 @@ class RadarPlotter(object):
         self.y1 = [0]
         self.x0 = [0]
         self.x1 = [0]
+        self.tdets = np.array([])
+        self.xdets = np.array([])
+        self.ydets = np.array([])
         self.cfar = [0]
         self.range0 = np.array([0., 0.])
         self.range1 = np.array([0., 0.])
@@ -89,6 +92,10 @@ class RadarPlotter(object):
         self.curve.append(self.plt[0].plot([], [], pen=(255,0,0)))
         self.curve.append(self.plt[1].plot([], [], pen=(255,0,0)))
         self.curve.append(self.plt[1].plot([], [], pen=(0,255,0)))
+        self.curve.append(self.plt[1].plot([], [], pen=None, pxMode=True,
+                                           symbolSize=3,
+                                           symbol='o',
+                                           symbolBrush=(255,255,0)))
         self.plt[1].setXRange(0, 100, padding=None)
         self.plt[1].setYRange(0, 40, padding=None)
         # Audio stuff
@@ -141,8 +148,20 @@ class RadarPlotter(object):
                         self.x1, self.y1 = range_profile(sif, self.N)
                         self.sif = sif
                     # CFAR
-                    _, self.cfar = rti.threshold_cfar(self.y1, num_train=20,
-                                                      num_guard=2, rate_fa=0.2)
+                    self.cfar = rti.threshold_cfar(self.y1, num_train=20,
+                                                   num_guard=2, rate_fa=0.2)
+                    idets = self.y1 > self.cfar
+                    tcurr = time.time()
+                    xdets = self.x1[idets]
+                    ydets = self.y1[idets]
+                    tdets = np.full(xdets.shape, tcurr)
+                    self.tdets = np.hstack((self.tdets, tdets))
+                    self.xdets = np.hstack((self.xdets, xdets))
+                    self.ydets = np.hstack((self.ydets, ydets))
+                    itimeout = self.tdets > tcurr - 0.5
+                    self.tdets = self.tdets[itimeout]
+                    self.xdets = self.xdets[itimeout]
+                    self.ydets = self.ydets[itimeout]
                     # Grab the trigger signal + a couple extra frames
                     # for better visual on the rising/falling edge
                     istart = np.max([0, istart - 10])
@@ -158,6 +177,7 @@ class RadarPlotter(object):
             self.curve[0].setData(self.x0, self.y0)
             self.curve[1].setData(self.x1, self.y1)
             self.curve[2].setData(self.x1, self.cfar)
+            self.curve[3].setData(self.xdets, self.ydets)
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)
