@@ -7,6 +7,8 @@ Adapted from the course's MATLAB post-processing scripts.
 `candar` is a real-time plotting utility for displaying
 both left/right channels (CPI trigger channel and the
 radar CPI channel), leveraging `pyqtgraph`.
+  * Top plot is trigger channel
+  * Bottom plot is CPI channel (red=signal, green=CFAR threshold)
 
 # Hardware Dependencies
 
@@ -43,7 +45,7 @@ $ candar pyaudio
 
 To read from recorded .wav file:
 ```
-$ candar playback input.wav
+$ candar playback samples/running_outside_20ms.wav
 ```
 
 For full list of options:
