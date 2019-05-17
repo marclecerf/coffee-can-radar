@@ -61,12 +61,15 @@ class FpsEstimator(object):
             self.tprint = tnow
 
 class RadarPlotter(object):
-    def __init__(self, iface, output='', size=(600,350)):
+    def __init__(self, iface, output='', size=(600,350),
+                 two_pulse_cancel=False):
         # Data stuff
         self.lock = threading.RLock()
         self.buf0 = np.array([])
         self.buf1 = np.array([])
         self.y0 = [0]
+        self.two_pulse_cancel = two_pulse_cancel
+        self.sif = np.array([])
         self.y1 = [0]
         self.x0 = [0]
         self.x1 = [0]
@@ -79,13 +82,17 @@ class RadarPlotter(object):
         l = pg.GraphicsLayout(border=(100, 100, 100))
         self.view.setCentralItem(l)
         self.view.show()
-        self.view.setWindowTitle('Live Audio')
+        title_details = ''
+        if self.two_pulse_cancel:
+            title_details = '(with two-pulse cancel)'
+        title = ' '.join(['RADAR Plotter', title_details])
+        self.view.setWindowTitle(title)
         self.view.resize(*size)
         self.plt = []
         self.curve = []
-        self.plt.append(l.addPlot(title="Channel 1"))
+        self.plt.append(l.addPlot(title="Trigger"))
         l.nextRow()
-        self.plt.append(l.addPlot(title="Channel 2"))
+        self.plt.append(l.addPlot(title="CPI Range Profile"))
         self.plt[0].showGrid(x=True, y=True)
         self.plt[1].showGrid(x=True, y=True)
         self.curve.append(self.plt[0].plot([], [], pen=(255,0,0)))
@@ -132,8 +139,16 @@ class RadarPlotter(object):
                 if iend_idx < len(ifalling):
                     iend = ifalling[iend_idx]
                     # Grab radar range profile + CFAR threshold
-                    self.y1 = self.buf1[istart:iend]
-                    self.y1 = range_profile(self.y1, self.N)
+                    sif = self.buf1[istart:iend]
+                    # two-pulse cancelled
+                    if self.sif.size > 0 and self.two_pulse_cancel:
+                        icut = np.min([sif.size, self.sif.size])
+                        sif_diff = sif[:icut] - self.sif[:icut]
+                        self.y1 = range_profile(sif_diff, self.N)
+                        self.sif = sif[:icut]
+                    else:
+                        self.y1 = range_profile(sif, self.N)
+                        self.sif = sif
                     max_range = rti.rr * self.N/2.
                     R = np.linspace(0, max_range, self.y1.size)
                     self.x1 = R
@@ -175,6 +190,8 @@ def parse_args():
     sps['pyaudio'].set_defaults(iface=make_device)
     for s in sps.values():
         s.add_argument('-o', '--output', help='output .wav file', default='')
+        s.add_argument('-x', '--two-pulse-cancel',
+                       help='Use two-pulse cancellation', action="store_true")
     return p.parse_args()
 
 def make_playback(args):
@@ -189,6 +206,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format=fmt, datefmt=datefmt)
     args = parse_args()
-    m = RadarPlotter(args.iface(args), output=args.output)
+    m = RadarPlotter(args.iface(args), output=args.output,
+                     two_pulse_cancel=args.two_pulse_cancel)
     return m.run()
 
