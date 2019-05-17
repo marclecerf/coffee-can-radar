@@ -32,18 +32,22 @@ radar CPI channel), leveraging `pyqtgraph`.
 
 # Quick Start
 
+Some environment setup (since I don't have a `setup.py` yet):
+* Add the `lib` folder to your `PYTHONPATH`
+* Add the `bin` folder to your `PATH`
+
 To read from PyAudio device:
 ```
-$ ./candar pyaudio
+$ candar pyaudio
 ```
 
 To read from recorded .wav file:
 ```
-$ ./candar playback input.wav
+$ candar playback input.wav
 ```
 
 For full list of options:
 ```
-$ ./candar -h
+$ candar -h
 ```
 

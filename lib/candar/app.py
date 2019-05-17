@@ -7,8 +7,8 @@ import sys
 import numpy as np
 import pyqtgraph as pg
 
-import interface
-import rti
+import candar.interface as interface
+import candar.rti as rti
 
 log = logging.getLogger(__name__)
 

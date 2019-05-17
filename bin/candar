@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import candar
+import candar.app
 import sys
 if __name__ == "__main__":
-    sys.exit(candar.main())
+    sys.exit(candar.app.main())
