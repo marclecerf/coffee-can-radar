@@ -6,7 +6,6 @@ import sys
 
 import numpy as np
 import pyqtgraph as pg
-import pyaudio
 
 import interface
 import rti
@@ -63,7 +62,6 @@ class FpsEstimator(object):
 
 class RadarPlotter(object):
     def __init__(self, iface, output='', size=(600,350)):
-        log.info("Will write to file: %s", output)
         # Data stuff
         self.lock = threading.RLock()
         self.buf0 = np.array([])
@@ -97,7 +95,11 @@ class RadarPlotter(object):
         self.plt[1].setYRange(0, 40, padding=None)
         # Audio stuff
         self.fps = FpsEstimator()
-        self.iface = iface(self.stream_callback)
+        if output:
+            tee = interface.WaveFileTee(output, self.stream_callback)
+            self.iface = iface(tee, init_callback=tee.set_framerate)
+        else:
+            self.iface = iface(self.stream_callback)
         self.chunksize = self.iface.chunksize
         self.FS = self.iface.framerate
         self.N = int(Tp * self.FS)
@@ -146,7 +148,6 @@ class RadarPlotter(object):
                     # Clear the data buffers
                     self.buf0 = []
                     self.buf1 = []
-        return None, pyaudio.paContinue
 
     def updateplot(self):
         with self.lock:
@@ -177,10 +178,10 @@ def parse_args():
     return p.parse_args()
 
 def make_playback(args):
-    return lambda cb: interface.WaveFileReader(args.input, cb)
+    return lambda cb, **kwargs: interface.WaveFileReader(args.input, cb, **kwargs)
 
 def make_device(args):
-    return lambda cb: interface.PyAudioReader(args.dev, cb)
+    return lambda cb, **kwargs: interface.PyAudioReader(args.dev, cb, **kwargs)
 
 def main():
     fmt='%(asctime)s %(message)s'
