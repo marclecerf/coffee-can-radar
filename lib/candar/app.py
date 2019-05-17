@@ -12,16 +12,6 @@ import candar.rti as rti
 
 log = logging.getLogger(__name__)
 
-Tp = 20.0E-3 # (s) pulse time
-K = 20
-c = 3e8
-
-def dbv(inp):
-    y = 20.0 * np.log10(np.absolute(inp))
-    y[np.isneginf(y)] = -1000.
-    y[np.isposinf(y)] = +1000.
-    return y
-
 def range_profile(sif, N):
     sif = np.asarray(sif)
     # subtract the average
@@ -30,10 +20,11 @@ def range_profile(sif, N):
     t0_ = time.time()
     zpad = int(8*N/2)
     v = np.absolute(np.fft.ifft(sif, n=zpad))
-    #v = dbv(v)
     tf_ = time.time()
     S = v[0:int(v.size/2)]
-    return S
+    max_range = rti.rr * N/2.
+    R = np.linspace(0, max_range, S.size)
+    return R, S
 
 def find_rising_edges(sgn, thresh=0.):
     idxs = np.argwhere(np.logical_and(sgn[:-1] < thresh, sgn[1:] > thresh))
@@ -109,7 +100,7 @@ class RadarPlotter(object):
             self.iface = iface(self.stream_callback)
         self.chunksize = self.iface.chunksize
         self.FS = self.iface.framerate
-        self.N = int(Tp * self.FS)
+        self.N = int(rti.Tp * self.FS)
         # Timer
         self.timer = pg.Qt.QtCore.QTimer()
         self.timer.setSingleShot(False)
@@ -144,16 +135,14 @@ class RadarPlotter(object):
                     if self.sif.size > 0 and self.two_pulse_cancel:
                         icut = np.min([sif.size, self.sif.size])
                         sif_diff = sif[:icut] - self.sif[:icut]
-                        self.y1 = range_profile(sif_diff, self.N)
+                        self.x1, self.y1 = range_profile(sif_diff, self.N)
                         self.sif = sif[:icut]
                     else:
-                        self.y1 = range_profile(sif, self.N)
+                        self.x1, self.y1 = range_profile(sif, self.N)
                         self.sif = sif
-                    max_range = rti.rr * self.N/2.
-                    R = np.linspace(0, max_range, self.y1.size)
-                    self.x1 = R
-                    _, self.cfar = rti.threshold_cfar(self.y1,
-                            num_train=20, num_guard=2, rate_fa=0.2)
+                    # CFAR
+                    _, self.cfar = rti.threshold_cfar(self.y1, num_train=20,
+                                                      num_guard=2, rate_fa=0.2)
                     # Grab the trigger signal + a couple extra frames
                     # for better visual on the rising/falling edge
                     istart = np.max([0, istart - 10])
