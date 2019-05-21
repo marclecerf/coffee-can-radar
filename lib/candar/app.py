@@ -6,11 +6,22 @@ import sys
 
 import numpy as np
 import pyqtgraph as pg
+import matplotlib.pyplot as plt
 
 import candar.interface as interface
 import candar.rti as rti
 
 log = logging.getLogger(__name__)
+
+class ColorMap(object):
+    def __init__(self, cm_name):
+        plt_map = plt.get_cmap(cm_name)
+        colors = plt_map.colors
+        colors = [c + [1.] for c in colors]
+        positions = np.linspace(0, 1, len(colors))
+        self.map = pg.ColorMap(positions, colors)
+    def __call__(self, x):
+        return self.map.map(x)
 
 def range_profile(sif, N):
     sif = np.asarray(sif)
@@ -65,6 +76,7 @@ class RadarPlotter(object):
         self.y1 = [0]
         self.x0 = [0]
         self.x1 = [0]
+        self.cdets = ColorMap('viridis')
         self.tdets = np.array([])
         self.xdets = np.array([])
         self.ydets = np.array([])
@@ -183,11 +195,17 @@ class RadarPlotter(object):
 
     def updateplot(self):
         with self.lock:
+            sig = rti.dbv(self.y1)
+            colors = self.cdets(self.ydets).tolist()
+            #pens = [pg.mkPen(color=c) for c in colors]
+            pen=(255,255,0,0)
+            cfar = rti.dbv(self.cfar)
             self.curve[0].setData(self.x0, self.y0)
-            self.curve[1].setData(self.x1, rti.dbv(self.y1))
-            self.curve[2].setData(self.x1, rti.dbv(self.cfar))
+            self.curve[1].setData(self.x1, sig)
+            self.curve[2].setData(self.x1, cfar)
             #self.curve[3].setData(self.xdets, rti.dbv(self.ydets))
-            self.curve[4].setData(self.tdets - self.tstart, self.xdets)
+            self.curve[4].setData(self.tdets - self.tstart, self.xdets,
+                                  symbolPen=pen)
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)
