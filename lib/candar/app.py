@@ -52,9 +52,10 @@ class FpsEstimator(object):
             self.tprint = tnow
 
 class RadarPlotter(object):
-    def __init__(self, iface, output='', size=(600,350),
+    def __init__(self, iface, output='', size=(800,600),
                  two_pulse_cancel=False):
         # Data stuff
+        self.tstart = time.time()
         self.lock = threading.RLock()
         self.buf0 = np.array([])
         self.buf1 = np.array([])
@@ -85,10 +86,13 @@ class RadarPlotter(object):
         self.plt = []
         self.curve = []
         self.plt.append(l.addPlot(title="Trigger"))
-        l.nextRow()
         self.plt.append(l.addPlot(title="CPI Range Profile"))
+        l.nextRow()
+        l2 = l.addLayout(colspan=2)
+        self.plt.append(l2.addPlot(title="Detections vs Time"))
         self.plt[0].showGrid(x=True, y=True)
         self.plt[1].showGrid(x=True, y=True)
+        self.plt[2].showGrid(x=True, y=True)
         self.curve.append(self.plt[0].plot([], [], pen=(255,0,0)))
         self.curve.append(self.plt[1].plot([], [], pen=(255,0,0)))
         self.curve.append(self.plt[1].plot([], [], pen=(0,255,0)))
@@ -96,8 +100,13 @@ class RadarPlotter(object):
                                            symbolSize=3,
                                            symbol='o',
                                            symbolBrush=(255,255,0)))
-        self.plt[1].setXRange(0, 100, padding=None)
-        self.plt[1].setYRange(0, 40, padding=None)
+        self.curve.append(self.plt[2].plot([], [], pen=None, pxMode=True,
+                                           symbolSize=3,
+                                           symbol='o',
+                                           symbolBrush=(255,255,0)))
+        self.plt[1].setXRange(0, 400, padding=None)
+        self.plt[1].setYRange(-20, 40, padding=None)
+        self.plt[2].setYRange(15, 400, padding=None)
         # Audio stuff
         self.fps = FpsEstimator()
         if output:
@@ -158,7 +167,7 @@ class RadarPlotter(object):
                     self.tdets = np.hstack((self.tdets, tdets))
                     self.xdets = np.hstack((self.xdets, xdets))
                     self.ydets = np.hstack((self.ydets, ydets))
-                    itimeout = self.tdets > tcurr - 0.5
+                    itimeout = self.tdets > tcurr - 10.0
                     self.tdets = self.tdets[itimeout]
                     self.xdets = self.xdets[itimeout]
                     self.ydets = self.ydets[itimeout]
@@ -177,10 +186,15 @@ class RadarPlotter(object):
             self.curve[0].setData(self.x0, self.y0)
             self.curve[1].setData(self.x1, rti.dbv(self.y1))
             self.curve[2].setData(self.x1, rti.dbv(self.cfar))
-            self.curve[3].setData(self.xdets, rti.dbv(self.ydets))
+            #self.curve[3].setData(self.xdets, rti.dbv(self.ydets))
+            self.curve[4].setData(self.tdets - self.tstart, self.xdets)
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)
+            tcurr = time.time()
+            tf = tcurr - self.tstart
+            t0 = tf - 10.
+            self.plt[2].setXRange(t0, tf, padding=None)
 
     def run(self):
         self.app.exec_()
