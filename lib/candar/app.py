@@ -148,8 +148,8 @@ class RadarPlotter(object):
                         self.x1, self.y1 = range_profile(sif, self.N)
                         self.sif = sif
                     # CFAR
-                    self.cfar = rti.threshold_cfar(self.y1, num_train=20,
-                                                   num_guard=2, rate_fa=0.2)
+                    self.cfar = rti.threshold_cfar(self.y1, num_train=30,
+                                                   num_guard=10, rate_fa=5.0E-2)
                     idets = self.y1 > self.cfar
                     tcurr = time.time()
                     xdets = self.x1[idets]
@@ -175,9 +175,9 @@ class RadarPlotter(object):
     def updateplot(self):
         with self.lock:
             self.curve[0].setData(self.x0, self.y0)
-            self.curve[1].setData(self.x1, self.y1)
-            self.curve[2].setData(self.x1, self.cfar)
-            self.curve[3].setData(self.xdets, self.ydets)
+            self.curve[1].setData(self.x1, rti.dbv(self.y1))
+            self.curve[2].setData(self.x1, rti.dbv(self.cfar))
+            self.curve[3].setData(self.xdets, rti.dbv(self.ydets))
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)

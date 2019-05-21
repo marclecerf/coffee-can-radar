@@ -12,11 +12,14 @@ and Synthetic Aperture Radar Imaging
 Gregory L. Charvat
 """
 import argparse
+import logging
 import sys
 import numpy as np
 import time
 import scipy.io.wavfile as wavfile
 import matplotlib.pyplot as plt
+
+log = logging.getLogger(__name__)
 
 #NOTE: set up-ramp sweep from 2-3.2V to stay within ISM band
 #change fstart and fstop below when in ISM band
@@ -27,8 +30,10 @@ c = 3.0E8 #(m/s) speed of light
 # RADAR PARAMETERS
 # Modulation ramp signal sent to oscillator
 # (measure this with oscilloscope)
-V_ramp_min = 1.2 # (V)
-V_ramp_max = 3.7 # (V)
+#V_ramp_min = 1.2 # (V)
+#V_ramp_max = 3.7 # (V)
+V_ramp_min = 0.4 # (V)
+V_ramp_max = 4.48 # (V)
 Tp = 20.0E-3 # (s) pulse time
 def osc_hz_out(v_in):
     # Oscillator min/max input voltage and
@@ -197,6 +202,8 @@ def parse_args():
     return ap.parse_args()
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    log.info('LFM ramp (GHz): [%f, %f]', fstart * 1E-9, fstop * 1E-9)
     args = parse_args()
     sys.exit(plots(args.wavfile, t0=args.t0, tf=args.tf))
 
