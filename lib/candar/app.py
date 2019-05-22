@@ -7,11 +7,28 @@ import sys
 import numpy as np
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
+import scipy.cluster.vq
 
 import candar.interface as interface
 import candar.rti as rti
 
 log = logging.getLogger(__name__)
+
+class Tracker(object):
+    def __init__(self):
+        self.ttracks = np.array([])
+        self.xtracks = np.array([])
+    def update(self, t, xdetections):
+        obs = np.asarray(xdetections).reshape(-1, 1)
+        if self.xtracks.size > 0:
+            guess = self.xtracks.reshape(-1, 1)
+            self.xtracks, _ = scipy.cluster.vq.kmeans(
+                obs, guess, iter=2, check_finite=False)
+        else:
+            self.xtracks = obs
+        self.xtracks = np.squeeze(np.transpose(self.xtracks))
+        self.xtracks = np.atleast_1d(self.xtracks)
+        self.ttracks = np.full(self.xtracks.shape, t)
 
 class ColorMap(object):
     def __init__(self, cm_name):
@@ -66,6 +83,7 @@ class RadarPlotter(object):
     def __init__(self, iface, output='', size=(800,600),
                  two_pulse_cancel=False):
         # Data stuff
+        self.tracker = Tracker()
         self.tstart = time.time()
         self.lock = threading.RLock()
         self.buf0 = np.array([])
@@ -116,6 +134,10 @@ class RadarPlotter(object):
                                            symbolSize=3,
                                            symbol='o',
                                            symbolBrush=(255,255,0)))
+        self.curve.append(self.plt[2].plot([], [], pen=None, pxMode=True,
+                                           symbolSize=10,
+                                           symbol='o',
+                                           symbolBrush=(255,0,0)))
         self.plt[1].setXRange(0, 400, padding=None)
         self.plt[1].setYRange(-20, 40, padding=None)
         self.plt[2].setYRange(15, 400, padding=None)
@@ -169,8 +191,8 @@ class RadarPlotter(object):
                         self.x1, self.y1 = range_profile(sif, self.N)
                         self.sif = sif
                     # CFAR
-                    self.cfar = rti.threshold_cfar(self.y1, num_train=30,
-                                                   num_guard=10, rate_fa=5.0E-2)
+                    self.cfar = rti.threshold_cfar(self.y1, num_train=20,
+                                                   num_guard=5, rate_fa=5.0E-2)
                     idets = self.y1 > self.cfar
                     tcurr = time.time()
                     xdets = self.x1[idets]
@@ -179,6 +201,7 @@ class RadarPlotter(object):
                     self.tdets = np.hstack((self.tdets, tdets))
                     self.xdets = np.hstack((self.xdets, xdets))
                     self.ydets = np.hstack((self.ydets, ydets))
+                    self.tracker.update(tcurr, xdets)
                     itimeout = self.tdets > tcurr - 10.0
                     self.tdets = self.tdets[itimeout]
                     self.xdets = self.xdets[itimeout]
@@ -206,6 +229,9 @@ class RadarPlotter(object):
             #self.curve[3].setData(self.xdets, rti.dbv(self.ydets))
             self.curve[4].setData(self.tdets - self.tstart, self.xdets,
                                   symbolPen=pen)
+            if self.tracker.xtracks.size > 0:
+                self.curve[5].setData(self.tracker.ttracks - self.tstart,
+                                      self.tracker.xtracks)
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)
