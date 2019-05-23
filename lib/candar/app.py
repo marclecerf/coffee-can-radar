@@ -8,6 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
 import scipy.cluster.vq
+import sklearn.cluster
 
 import candar.interface as interface
 import candar.rti as rti
@@ -17,17 +18,46 @@ log = logging.getLogger(__name__)
 class Tracker(object):
     def __init__(self):
         self.ttracks = np.array([])
+        self.xcands = np.array([])
         self.xtracks = np.array([])
+
+    def _update(self, xt, xd):
+        obs = np.asarray(xd).reshape(-1, 1)
+        #guess = self.xtracks.reshape(-1, 1)
+        #self.xtracks, _ = scipy.cluster.vq.kmeans(
+        #    obs, guess, iter=2, check_finite=False)
+        #self.xtracks = sklearn.cluster.DBSCAN().fit(
+        #self.xtracks = np.squeeze(np.transpose(self.xtracks))
+        #self.xtracks = np.atleast_1d(self.xtracks)
+        it_updated = np.full(xt.shape, False)
+        im_used = np.full(xd.shape, False)
+        thresh = 5.0**2
+        XT = np.tile(xt, (xd.size, 1))
+        XD = np.tile(obs, (1, xt.size))
+        D = XT - XD
+        outliers = D**2 > thresh
+        inliers = np.logical_not(outliers)
+        D[outliers] = 0.
+        xt = xt + np.sum(D, axis=0)
+        it_updated = np.any(inliers, axis=0)
+        im_unused = np.logical_not(np.any(inliers, axis=1))
+        return xt, it_updated, im_unused
+
     def update(self, t, xdetections):
-        obs = np.asarray(xdetections).reshape(-1, 1)
+        id_unused = np.full(xdetections.shape, True)
         if self.xtracks.size > 0:
-            guess = self.xtracks.reshape(-1, 1)
-            self.xtracks, _ = scipy.cluster.vq.kmeans(
-                obs, guess, iter=2, check_finite=False)
-        else:
-            self.xtracks = obs
-        self.xtracks = np.squeeze(np.transpose(self.xtracks))
-        self.xtracks = np.atleast_1d(self.xtracks)
+            self.xtracks, it_updated, id_unused = \
+                    self._update(self.xtracks, xdetections)
+            xdetections = xdetections[id_unused]
+            self.xtracks = self.xtracks[it_updated]
+        if self.xcands.size > 0:
+            self.xcands, ic_updated, id_unused = \
+                    self._update(self.xcands, xdetections)
+            self.xcands = self.xcands[ic_updated]
+            xdetections = xdetections[id_unused]
+            self.xtracks = np.hstack((self.xtracks,
+                                      self.xcands))
+        self.xcands = xdetections
         self.ttracks = np.full(self.xtracks.shape, t)
 
 class ColorMap(object):
@@ -192,7 +222,7 @@ class RadarPlotter(object):
                         self.sif = sif
                     # CFAR
                     self.cfar = rti.threshold_cfar(self.y1, num_train=20,
-                                                   num_guard=5, rate_fa=5.0E-2)
+                                                   num_guard=5, rate_fa=1.0E-1)
                     idets = self.y1 > self.cfar
                     tcurr = time.time()
                     xdets = self.x1[idets]
@@ -205,7 +235,7 @@ class RadarPlotter(object):
                     itimeout = self.tdets > tcurr - 10.0
                     self.tdets = self.tdets[itimeout]
                     self.xdets = self.xdets[itimeout]
-                    self.ydets = self.ydets[itimeout]
+                    #self.ydets = self.ydets[itimeout]
                     # Grab the trigger signal + a couple extra frames
                     # for better visual on the rising/falling edge
                     istart = np.max([0, istart - 10])
@@ -230,8 +260,12 @@ class RadarPlotter(object):
             self.curve[4].setData(self.tdets - self.tstart, self.xdets,
                                   symbolPen=pen)
             if self.tracker.xtracks.size > 0:
+                print('>>>> upd tracker -----')
+                print(self.tracker.xtracks.shape)
+                print(self.tracker.ttracks.shape)
                 self.curve[5].setData(self.tracker.ttracks - self.tstart,
                                       self.tracker.xtracks)
+                print('<<<< upd tracker -----')
             self.range0[0] = np.min([self.range0[0], np.min(self.y0)])
             self.range0[1] = np.max([self.range0[0], np.max(self.y0)])
             self.plt[0].setYRange(*self.range0, padding=None)
