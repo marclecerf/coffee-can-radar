@@ -170,7 +170,7 @@ class RadarPlotter(object):
                         self.sif = sif
                     # CFAR
                     self.cfar = rti.threshold_cfar(self.y1, num_train=30,
-                                                   num_guard=10, rate_fa=5.0E-2)
+                                                   num_guard=20, rate_fa=5.0E-2)
                     idets = self.y1 > self.cfar
                     tcurr = time.time()
                     xdets = self.x1[idets]
