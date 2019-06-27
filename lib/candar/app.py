@@ -13,25 +13,12 @@ import candar.rti as rti
 
 log = logging.getLogger(__name__)
 
-class ColorMap(object):
-    def __init__(self, cm_name):
-        plt_map = plt.get_cmap(cm_name)
-        colors = plt_map.colors
-        colors = [c + [1.] for c in colors]
-        positions = np.linspace(0, 1, len(colors))
-        self.map = pg.ColorMap(positions, colors)
-    def __call__(self, x):
-        return self.map.map(x)
-
 def range_profile(sif, N):
     sif = np.asarray(sif)
     # subtract the average
     ave = np.mean(sif, axis=0)
     sif = sif - ave
-    t0_ = time.time()
-    zpad = int(8*N/2)
-    v = np.absolute(np.fft.ifft(sif, n=zpad))
-    tf_ = time.time()
+    v = np.absolute(np.fft.fft(sif, n=int(8*N/2)))
     S = v[0:int(v.size/2)]
     max_range = rti.rr * N/2.
     R = np.linspace(0, max_range, S.size)
@@ -76,7 +63,6 @@ class RadarPlotter(object):
         self.y1 = [0]
         self.x0 = [0]
         self.x1 = [0]
-        self.cdets = ColorMap('viridis')
         self.tdets = np.array([])
         self.xdets = np.array([])
         self.ydets = np.array([])
@@ -196,8 +182,6 @@ class RadarPlotter(object):
     def updateplot(self):
         with self.lock:
             sig = rti.dbv(self.y1)
-            colors = self.cdets(self.ydets).tolist()
-            #pens = [pg.mkPen(color=c) for c in colors]
             pen=(255,255,0,0)
             cfar = rti.dbv(self.cfar)
             self.curve[0].setData(self.x0, self.y0)
