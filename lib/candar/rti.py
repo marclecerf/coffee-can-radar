@@ -13,10 +13,12 @@ Gregory L. Charvat
 """
 import argparse
 import logging
+import os
 import sys
 import numpy as np
 import time
 import scipy.io.wavfile as wavfile
+import scipy.signal as signal
 import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
@@ -69,6 +71,9 @@ def range_profiles(wav, FS, N):
     """
     #the input appears to be inverted
     trig = -1 * wav[:, 0]
+    print('Wavfile dtype: ', wav.dtype)
+    print('Trig min, max: ', np.amin(trig), np.amax(trig))
+    print('IF min, max: ', np.amin(wav[:, 1]), np.amax(wav[:, 1]))
     # Plot the first second of trigger
     #plt.plot(trig, 'b-')
     #plt.show()
@@ -80,7 +85,7 @@ def range_profiles(wav, FS, N):
     # Make heavy use of numpy vector operations, otherwise this
     # takes forever...
     startroll = []
-    for nn in xrange(1, 12):
+    for nn in range(1, 12):
         startroll.append(np.roll(start, nn))
     startroll = np.array(startroll)
     mstart = np.mean(startroll, axis=0)
@@ -148,51 +153,115 @@ def plots(wavpath, t0=None, tf=None):
         return 1
     #return 0
     N = int(Tp * FS) # number of samples per pulse
+    print('Number of samples per pulse: ', N)
     tim, sif = range_profiles(data, FS, N)
+    print('Range profiles shape: ', sif.shape)
     # subtract the average
     ave = np.mean(sif, axis=0)
+    print('Average shape: ', ave.shape)
     sif = sif - ave
     max_range = rr * N/2 # max range
-    zpad = 8*N/2
+    # zpad = int(8*N/2)
+    # print('zpad: ', zpad)
+    # print(type(zpad))
     def extents(f):
         delta = f[1] - f[0]
         return [f[0] - delta/2, f[-1] + delta/2]
     # RTI plot
-    print(sif.shape)
-    t0_ = time.time()
+
+    # Old method
+    zpad = int(8*N/2)
     v = dbv(np.fft.ifft(sif, axis=1))
-    tf_ = time.time()
-    print("ifft [%d x %d] took %f s" % (sif.shape[0], sif.shape[1], tf_ - t0_))
-    #S = v[:,0:int(v.shape[1]/2)]
-    #m = np.max(np.max(v))
-    #plt.figure()
-    #plt.imshow(S, aspect='auto', interpolation='nearest',
-    #           extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
-    #plt.title('RTI without clutter rejection')
-    #plt.xlabel('Range (meters)')
-    #plt.ylabel('Time (seconds)')
-    # 2-pulse canceller RTI plot
-    sif2 = sif[1:sif.shape[0], :] - sif[0:sif.shape[0]-1, :]
-    v2 = dbv(np.fft.ifft(sif2, axis=1))
-    # TODO: ref MATLAB script, scale S2 by range
-    S2 = v2[:,0:int(v2.shape[1]/2)]
+    S = v[:,0:int(v.shape[1]/2)]
+    plt.figure()
+    plt.imshow(S, aspect='auto', interpolation='nearest',
+        extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
+    plt.title('RTI old method')
+    plt.xlabel('Range (meters)')
+    plt.ylabel('Time (seconds)')
+    plt.savefig('%s-old.png' % (os.path.basename(wavpath)), dpi=800)
+    plt.close()
+
+    # Sampling a signal at FS
+    # Max detectable frequency is nyquist, 'FS/2'
+    # Max frequency corresponds to what range?
+    #   -> FS/2 = S*2dmax/c -> dmax = FS * c / S
+    # Use a Welch method to get signal PSD. We can use
+    # multiple windows for the same range profile
+    for nperseg in [128, 256, 512, N]:
+        rem = N % nperseg
+        if rem == 0:
+            nwindows = int(N/nperseg)
+            noverlap = 0
+        else:
+            nwindows = int(N/nperseg) + 1
+            noverlap = int(rem / (nwindows - 1))
+        print('npserseg = ', nperseg, 'noverlap = ', noverlap, 'nwindows = ', nwindows)
+        nfft = nperseg/2 + 1
+        chirp_slope = BW / Tp
+        dmax = FS * c / chirp_slope
+        print('Predicted max distance: ', dmax)
+        print('Distance bin size: ', dmax / (nfft-1))
+        print('Range resolution (theoretical): ', rr)
+        freq, Pxx = signal.welch(sif, fs=FS, window='hann', nperseg=nperseg, noverlap=noverlap, axis=1)
+        print('Welch output: ', freq.shape, Pxx.shape)
+        rng = freq * c / (2 * chirp_slope)
+        print('Max distance: ', rng[-1])
+        
+        plt.figure()
+        plt.title('Range-Time Indicator (RTI)')
+        plt.imshow(
+            dbv(np.abs(Pxx**2)), aspect='auto', interpolation='nearest',
+            extent=extents(rng) + extents(tim)
+        )
+        plt.xlabel('Range (m)')
+        plt.ylabel('Time (s)')
+        plt.savefig('%s-npserseg=%05d.png' % (os.path.basename(wavpath), nperseg), dpi=800)
+        plt.close()
+
+    # fig.suptitle('RTI')
+    # print(extents(tim))
+    # print(max_range)
+    # ax1.imshow(S1, aspect='auto', interpolation='nearest',
+    #            extent=extents(range_bins) + extents(tim))
+    # ax1.set_xlabel('Range (meters)')
+    # ax1.set_ylabel('Time (seconds)')
+   
+    # t0_ = time.time()
+    # tf_ = time.time()
+    # print("ifft [%d x %d] took %f s" % (sif.shape[0], sif.shape[1], tf_ - t0_))
+    # #S = v[:,0:int(v.shape[1]/2)]
+    # #m = np.max(np.max(v))
+    # #plt.figure()
+    # #plt.imshow(S, aspect='auto', interpolation='nearest',
+    # #           extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
+    # #plt.title('RTI without clutter rejection')
+    # #plt.xlabel('Range (meters)')
+    # #plt.ylabel('Time (seconds)')
+    # # 2-pulse canceller RTI plot
+    # sif2 = sif[1:sif.shape[0], :] - sif[0:sif.shape[0]-1, :]
+    # v2 = dbv(np.fft.ifft(sif2, axis=1))
+    # # TODO: ref MATLAB script, scale S2 by range
+    # S2 = v2[:,0:int(v2.shape[1]/2)]
     #m2 = np.max(np.max(v2))
     # CFAR
-    D2 = np.zeros(S2.shape)
-    for irow, row in enumerate(S2):
-        thresh = threshold_cfar(row)
-        D2[irow, :] = row > thresh
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    fig.suptitle('RTI with 2-pulse canceller clutter rejection')
-    ax1.imshow(S2, aspect='auto', interpolation='nearest',
-               extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
-    ax1.set_xlabel('Range (meters)')
-    ax1.set_ylabel('Time (seconds)')
-    ax2.imshow(D2, aspect='auto', interpolation='nearest',
-               extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
-    ax2.set_xlabel('Range (meters)')
-    ax2.set_ylabel('Time (seconds)')
-    plt.show()
+    # D2 = np.zeros(S2.shape)
+    # for irow, row in enumerate(S2):
+    #     thresh = threshold_cfar(row)
+    #     D2[irow, :] = row > thresh
+    # fig, (ax1, ax2) = plt.subplots(1, 2)
+    # fig.suptitle('RTI')
+    # print(extents(tim))
+    # print(max_range)
+    # ax1.imshow(S1, aspect='auto', interpolation='nearest',
+    #            extent=extents(range_bins) + extents(tim))
+    # ax1.set_xlabel('Range (meters)')
+    # ax1.set_ylabel('Time (seconds)')
+    # ax2.imshow(D2, aspect='auto', interpolation='nearest',
+    #            extent=extents(np.linspace(0, max_range, zpad)) + extents(tim))
+    # ax2.set_xlabel('Range (meters)')
+    # ax2.set_ylabel('Time (seconds)')
+    # plt.show()
 
 def parse_args():
     ap = argparse.ArgumentParser('RTI Plotter')
@@ -202,7 +271,7 @@ def parse_args():
     return ap.parse_args()
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     log.info('LFM ramp (GHz): [%f, %f]', fstart * 1E-9, fstop * 1E-9)
     args = parse_args()
     sys.exit(plots(args.wavfile, t0=args.t0, tf=args.tf))
